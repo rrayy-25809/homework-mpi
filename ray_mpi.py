@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import math
 from PIL import Image
-#TODO:matplotlib 슈퍼컴퓨터 질문하기
+#TODO:matplotlib 슈퍼컴퓨터 질문하기 광원 움직이게 달 빠르게 움직이게
 # 벡터 정규화 함수
 def normalize(vector):
     return vector / np.linalg.norm(vector)
