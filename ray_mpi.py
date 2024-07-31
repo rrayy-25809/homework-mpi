@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import math
 from PIL import Image
-#TODO:matplotlib 슈퍼컴퓨터 질문하기 광원 움직이게 달 빠르게 움직이게
+#TODO:광원 움직이게 달 빠르게 움직이게
 # 벡터 정규화 함수
 def normalize(vector):
     return vector / np.linalg.norm(vector)
@@ -83,21 +83,18 @@ max_depth = 3
 width = 1200
 height = 800
 camera = np.array([0, 0, 0.5])
-light = { 'position': np.array([5, 5, 5]), 'ambient': np.array([1, 1, 1]), 'diffuse': np.array([1, 1, 1]), 'specular': np.array([1, 1, 1]) }
 
 for count in range(60):
     start_time = MPI.Wtime()
 
-    angle = 2*math.pi * count/60
+    light = { 'position': np.array([5*math.sin(2*math.pi * count/60), 5, 5*math.cos(2*math.pi * count/60)]), 'ambient': np.array([1, 1, 1]), 'diffuse': np.array([1, 1, 1]), 'specular': np.array([1, 1, 1]) }
 
     # 씬에 있는 객체들 정의
     objects = [
-        { 'center': np.array([0, 0.05*math.sin(angle), 0]), 'radius': 0.2, 'ambient': np.array([0, 0, 0.7]), 'diffuse': np.array([0.7, 1, 0]), 'specular': np.array([1, 1, 1]), 'shininess': 120, 'reflection': 0.5 },
-    #{ 'center': np.array([0.01, 0, 0.05]), 'radius': 0.15, 'ambient': np.array([0, 0.7, 0]), 'diffuse': np.array([0.7, 1, 0]), 'specular': np.array([1, 1, 1]), 'shininess': 80, 'reflection': 0.1 },
-        { 'center': np.array([0.4*math.cos(angle), 0, 0.4*math.sin(angle)]), 'radius': 0.03, 'ambient': np.array([0.1, 0.1, 0.1]), 'diffuse': np.array([0.6, 0.6, 0.6]), 'specular': np.array([1, 1, 1]), 'shininess': 100, 'reflection': 0.2 },
+        { 'center': np.array([0, 0.05*math.sin(2*math.pi * count/60), 0]), 'radius': 0.2, 'ambient': np.array([0, 0, 0.7]), 'diffuse': np.array([0.7, 1, 0]), 'specular': np.array([1, 1, 1]), 'shininess': 120, 'reflection': 0.5 },
+        { 'center': np.array([0.4*math.cos(2*math.pi * 5*count/60), 0, 0.4*math.sin(2*math.pi * 5*count/60)]), 'radius': 0.03, 'ambient': np.array([0.1, 0.1, 0.1]), 'diffuse': np.array([0.6, 0.6, 0.6]), 'specular': np.array([1, 1, 1]), 'shininess': 100, 'reflection': 0.2 },
         { 'center': np.array([0, -9000, 0]), 'radius': 9000 - 0.7, 'ambient': np.array([0.1, 0.1, 0.1]), 'diffuse': np.array([0.6, 0.6, 0.6]), 'specular': np.array([1, 1, 1]), 'shininess': 100, 'reflection': 0.5 }
     ]
-
 
     #기본 mpi변수들 선언
     comm = MPI.COMM_WORLD
@@ -107,10 +104,24 @@ for count in range(60):
     # 화면 비율과 스크린 크기 설정
     ratio = float(width) / height 
     screen = (-1, 1 / ratio, 1, -1 / ratio)
-    image = np.empty([height, width, 3],dtype=float) if rank == 0 else None
+    image = np.empty([height, width, 3]) if rank == 0 else None
 
     N = height // size + int(height % size > rank)
     start = comm.scan(N)-N
+
+    # 각 프로세스가 처리할 행 수를 계산
+    # height // size는 각 프로세스가 처리할 기본 행 수를 의미하고,
+    # height % size는 나머지 행을 각 프로세스에 골고루 분배하기 위한 조건입니다.
+    rows_per_process = [height // size + (1 if i < height % size else 0) for i in range(size)]
+
+    # 각 프로세스가 보낼 픽셀 수를 계산
+    # 각 픽셀은 RGB로 구성되어 있어 각 픽셀마다 3개의 값이 존재하므로 width * 3을 곱합니다.
+    sendcounts = [rows * width * 3 for rows in rows_per_process]
+
+    # displs 배열 계산 (각 프로세스의 데이터 시작 위치)
+    displs = [0] * size
+    for i in range(1, size):
+        displs[i] = displs[i - 1] + sendcounts[i - 1]
 
     Y = np.linspace(screen[1], screen[3], height)[start:start+N]
     X = np.linspace(screen[0], screen[2], width)
@@ -122,9 +133,7 @@ for count in range(60):
             color = ray_tracing(x, y) 
             rank_image[i, j] = np.clip(color, 0, 1)
 
-    #print(f"rank {rank}'s process is end at {int(end_time - start_time)} sec")
-
-    comm.Gather(rank_image,image)
+    comm.Gatherv(sendbuf=rank_image,recvbuf=(image, sendcounts, displs, MPI.DOUBLE),root=0)
     if rank==0:
         # 결과 이미지를 파일로 저장
         plt.imsave(f'images/{count}.png', image)
