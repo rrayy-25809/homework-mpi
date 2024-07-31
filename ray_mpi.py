@@ -1,10 +1,9 @@
 from mpi4py import MPI
 import numpy as np
 import matplotlib.pyplot as plt
-#영상 생성을 위한 임포트
-import os
+import math
 from PIL import Image
-
+#TODO:matplotlib 슈퍼컴퓨터 질문하기
 # 벡터 정규화 함수
 def normalize(vector):
     return vector / np.linalg.norm(vector)
@@ -75,58 +74,69 @@ def ray_tracing(x, y):
     return color
 
 # 프로그램 실행 시간 측정 시작
-start_time = MPI.Wtime()
+all_start_time = MPI.Wtime()
 
 # 최대 반사 깊이
 max_depth = 3
 
 # 이미지 크기와 카메라 및 광원 설정
-width = 600
-height = 400
-camera = np.array([0, 0, 1])
+width = 1200
+height = 800
+camera = np.array([0, 0, 0.5])
 light = { 'position': np.array([5, 5, 5]), 'ambient': np.array([1, 1, 1]), 'diffuse': np.array([1, 1, 1]), 'specular': np.array([1, 1, 1]) }
 
-# 씬에 있는 객체들 정의
-objects = [
-    { 'center': np.array([-0.2, 0, -1]), 'radius': 0.2, 'ambient': np.array([0.1, 0, 0]), 'diffuse': np.array([0.7, 1, 0]), 'specular': np.array([1, 1, 1]), 'shininess': 80, 'reflection': 0.1 },
-    { 'center': np.array([0.1, -0.3, 0]), 'radius': 0.1, 'ambient': np.array([0.1, 0, 0.1]), 'diffuse': np.array([0.7, 0, 0.7]), 'specular': np.array([1, 1, 1]), 'shininess': 100, 'reflection': 0.5 },
-    { 'center': np.array([0.5, 0, -1]), 'radius': 0.5, 'ambient': np.array([0.1, 0, 0.1]), 'diffuse': np.array([0.7, 0.7, 0.7]), 'specular': np.array([1, 1, 1]), 'shininess': 100, 'reflection': 0.5 },
-    { 'center': np.array([-0.3, 0, 0]), 'radius': 0.15, 'ambient': np.array([0, 0.1, 0]), 'diffuse': np.array([0, 0.6, 0]), 'specular': np.array([1, 1, 1]), 'shininess': 100, 'reflection': 0.5 },
-    { 'center': np.array([0, -9000, 0]), 'radius': 9000 - 0.7, 'ambient': np.array([0.1, 0.1, 0.1]), 'diffuse': np.array([0.6, 0.6, 0.6]), 'specular': np.array([1, 1, 1]), 'shininess': 100, 'reflection': 0.5 }
-]
+for count in range(60):
+    start_time = MPI.Wtime()
+
+    angle = 2*math.pi * count/60
+
+    # 씬에 있는 객체들 정의
+    objects = [
+        { 'center': np.array([0, 0.05*math.sin(angle), 0]), 'radius': 0.2, 'ambient': np.array([0, 0, 0.7]), 'diffuse': np.array([0.7, 1, 0]), 'specular': np.array([1, 1, 1]), 'shininess': 120, 'reflection': 0.5 },
+    #{ 'center': np.array([0.01, 0, 0.05]), 'radius': 0.15, 'ambient': np.array([0, 0.7, 0]), 'diffuse': np.array([0.7, 1, 0]), 'specular': np.array([1, 1, 1]), 'shininess': 80, 'reflection': 0.1 },
+        { 'center': np.array([0.4*math.cos(angle), 0, 0.4*math.sin(angle)]), 'radius': 0.03, 'ambient': np.array([0.1, 0.1, 0.1]), 'diffuse': np.array([0.6, 0.6, 0.6]), 'specular': np.array([1, 1, 1]), 'shininess': 100, 'reflection': 0.2 },
+        { 'center': np.array([0, -9000, 0]), 'radius': 9000 - 0.7, 'ambient': np.array([0.1, 0.1, 0.1]), 'diffuse': np.array([0.6, 0.6, 0.6]), 'specular': np.array([1, 1, 1]), 'shininess': 100, 'reflection': 0.5 }
+    ]
 
 
-#기본 mpi변수들 선언
-comm = MPI.COMM_WORLD
-size = comm.Get_size()
-rank = comm.Get_rank()
+    #기본 mpi변수들 선언
+    comm = MPI.COMM_WORLD
+    size = comm.Get_size()
+    rank = comm.Get_rank()
 
-# 화면 비율과 스크린 크기 설정
-ratio = float(width) / height 
-screen = (-1, 1 / ratio, 1, -1 / ratio)
-#count =0
-image = np.empty([height, width, 3],dtype=float) if rank == 0 else None
+    # 화면 비율과 스크린 크기 설정
+    ratio = float(width) / height 
+    screen = (-1, 1 / ratio, 1, -1 / ratio)
+    image = np.empty([height, width, 3],dtype=float) if rank == 0 else None
 
-N = height // size + int(height % size > rank)
-start = comm.scan(N)-N
+    N = height // size + int(height % size > rank)
+    start = comm.scan(N)-N
 
-Y = np.linspace(screen[1], screen[3], height)[start:start+N]
-X = np.linspace(screen[0], screen[2], width)
+    Y = np.linspace(screen[1], screen[3], height)[start:start+N]
+    X = np.linspace(screen[0], screen[2], width)
 
-rank_image = np.zeros((N, width, 3))
+    rank_image = np.zeros((N, width, 3))
 
-for i, y in enumerate(Y):
-    for j, x in enumerate(X):
-        color = ray_tracing(x, y) 
-        rank_image[i, j] = np.clip(color, 0, 1)
+    for i, y in enumerate(Y):
+        for j, x in enumerate(X):
+            color = ray_tracing(x, y) 
+            rank_image[i, j] = np.clip(color, 0, 1)
 
-end_time = MPI.Wtime()
-print(f"rank {rank}'s process is end at {int(end_time - start_time)} sec")
+    #print(f"rank {rank}'s process is end at {int(end_time - start_time)} sec")
 
-comm.Gather(rank_image,image)
+    comm.Gather(rank_image,image)
+    if rank==0:
+        # 결과 이미지를 파일로 저장
+        plt.imsave(f'images/{count}.png', image)
+        end_time = MPI.Wtime()
+        print(f"process {count + 1} is end at {end_time-start_time}")
+
 if rank==0:
-    # 결과 이미지를 파일로 저장
-    plt.imsave(f'images/{count}.png', image)
+    images = []
+    for image in range(60):
+        images.append(Image.open(f'./images/{image}.png'))
+
     # 프로그램 실행 시간 측정 종료 (원본 파일의 시간 약 26초)
     all_end_time = MPI.Wtime()
-    print(f"process {count + 1} is end at {all_end_time-start_time}")
+    images[0].save('orbit.gif', save_all=True, append_images=images[1:], duration=100, loop =0)
+    print(f"gif is generated at {all_end_time - all_start_time}")
