@@ -106,16 +106,13 @@ for count in range(60):
     screen = (-1, 1 / ratio, 1, -1 / ratio)
     image = np.empty([height, width, 3]) if rank == 0 else None
 
-    N = height // size + int(height % size > rank)
+    N = height // size + (1 if height % size > rank else 0)
     start = comm.scan(N)-N
 
     # 각 프로세스가 처리할 행 수를 계산
-    # height // size는 각 프로세스가 처리할 기본 행 수를 의미하고,
-    # height % size는 나머지 행을 각 프로세스에 골고루 분배하기 위한 조건입니다.
-    rows_per_process = [height // size + (1 if i < height % size else 0) for i in range(size)]
+    rows_per_process = [(height // size) + (i < height % size) for i in range(size)]
 
     # 각 프로세스가 보낼 픽셀 수를 계산
-    # 각 픽셀은 RGB로 구성되어 있어 각 픽셀마다 3개의 값이 존재하므로 width * 3을 곱합니다.
     sendcounts = [rows * width * 3 for rows in rows_per_process]
 
     # displs 배열 계산 (각 프로세스의 데이터 시작 위치)
@@ -123,15 +120,14 @@ for count in range(60):
     for i in range(1, size):
         displs[i] = displs[i - 1] + sendcounts[i - 1]
 
+    # Y와 X 좌표 생성
     Y = np.linspace(screen[1], screen[3], height)[start:start+N]
     X = np.linspace(screen[0], screen[2], width)
 
+    # 결과 이미지를 초기화
     rank_image = np.zeros((N, width, 3))
-
-    for i, y in enumerate(Y):
-        for j, x in enumerate(X):
-            color = ray_tracing(x, y) 
-            rank_image[i, j] = np.clip(color, 0, 1)
+    colors = np.array([[ray_tracing(x, y) for x in X] for y in Y])
+    rank_image[:, :, :] = np.clip(colors, 0, 1)
 
     comm.Gatherv(sendbuf=rank_image,recvbuf=(image, sendcounts, displs, MPI.DOUBLE),root=0)
     if rank==0:
