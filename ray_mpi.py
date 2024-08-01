@@ -80,8 +80,8 @@ all_start_time = MPI.Wtime()
 max_depth = 3
 
 # 이미지 크기와 카메라 및 광원 설정
-width = 1200
-height = 800
+width = 1000
+height = 600
 camera = np.array([0, 0, 0.5])
 
 for count in range(60):
@@ -141,11 +141,8 @@ for count in range(60):
         print(f"process {count + 1} is end at {end_time-start_time}")
 
 if rank==0:
-    images = []
-    for image in range(60):
-        images.append(Image.open(f'./images/{image}.png'))
-
+    images = [Image.open(f'images/{i}.png') for i in range(60)]
+    images[0].save('orbit.gif', save_all=True, append_images=images[1:], duration=100, loop =0)
     # 프로그램 실행 시간 측정 종료 (원본 파일의 시간 약 26초)
     all_end_time = MPI.Wtime()
-    images[0].save('orbit.gif', save_all=True, append_images=images[1:], duration=100, loop =0)
     print(f"gif is generated at {all_end_time - all_start_time}")
